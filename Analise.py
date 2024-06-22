@@ -9,14 +9,16 @@
 
 
 import matplotlib.pyplot as plt
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.preprocessing import LabelEncoder  #Possibilita a transformação de classes Alpha-numéricas em classes numéricas.
 import seaborn as sns
 import pandas as pd
+import numpy as np
+from sklearn.preprocessing import LabelEncoder #Possibilita a transformação de classes Alpha-numéricas em classes numéricas.
 from sklearn.model_selection import train_test_split
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.metrics import accuracy_score, confusion_matrix, roc_auc_score, roc_curve
 
 # Aqui os dados que serão analisados são importados
 dados = pd.read_csv("LLM.csv")
@@ -31,6 +33,7 @@ Length = []
 letraInicial = []
 pontoFinal = []
 for inf in dados["Text"]:
+    # Variáveis escolhidas inicialmente
     Length.append(len(inf)) # O comprimento de cada mensagem
     letraInicial.append(inf[0].isupper()) # Um boolean indicando se a primeira letra da frase é maiúscula
     pontoFinal.append(inf[-1] in ".?!") # Outro boolean indicando se a mensagem tem pontuação no final
@@ -82,29 +85,150 @@ X_train, X_test, y_train, y_test = train_test_split(dados.iloc[:, 1:-1], y, test
 
 ###############################################################################################
 
-# LDA
-# Definição do modelo
-modelo = LinearDiscriminantAnalysis()
-D = modelo.fit_transform(X_train, y_train) # Determina os Descriminantes gerados a partir do modelo  
-# Criamos um data frame com os valores do discriminate e as classes relacionadas
-plotModelo = pd.DataFrame(D, columns=['Descriminante'])
-plotModelo['Classes'] = y_train
-sns.FacetGrid(plotModelo, hue ="Classes", height = 6).map(plt.scatter, 'Descriminante', 'Classes')
-plt.legend(loc='upper right')
-plt.show()  # Mostra a relação do valor do Discriminante gerado e a classe relacionada
+def LDA(X_train, X_test, y_train, y_test, disablePlot:bool = True):
+    """ 
+        Gera um modelo LDA e retorna a lista de probabilidade dos y dos x de teste.
+        Por padrão mostra a respectiva Matriz de Confusão com os dados fornecidos.
+    """
+    # Definição do modelo
+    modeloLDA = LinearDiscriminantAnalysis()
+    D = modeloLDA.fit_transform(X_train, y_train) # Utiliza os dados de treinamento parar gerar um modelo preditor e determina os Descriminantes gerados a partir do modelo  
+    Y_predict = modeloLDA.predict(X_test) # Prediz as possíveis classes usando os dados de teste
 
-modelo.fit(X_train, y_train)    # Utiliza os dados de treinamento parar gerar um modelo preditor
-Y_predict = modelo.predict(X_test) # Prediz as possíveis classes usando os dados de teste
+    if (disablePlot == False):
+        # Criamos um data frame com os valores do discriminate e as classes relacionadas
+        plotModelo = pd.DataFrame(D, columns=['Descriminante'])
+        plotModelo['Classes'] = y_train
+        sns.FacetGrid(plotModelo, hue ="Classes", height = 6).map(plt.scatter, 'Descriminante', 'Classes')
+        plt.legend(loc='upper right')
+        plt.show()  # Mostra a relação do valor do Discriminante gerado e a classe relacionada
 
-# Calcula e mostra a precisão da previsão
-precisao = accuracy_score(y_test, Y_predict)
-matriz = confusion_matrix(y_test, Y_predict)
-print(f'Precisão: {precisao:.3f}')
+    # Calcula e mostra a precisão da previsão
+    precisao = accuracy_score(y_test, Y_predict)
+    print(f'Precisão: {precisao:.3f}')
 
-# Heatmap para representar a Matriz de Confusão, que quantifica os erros e acertos da previsão
-plt.figure(figsize=(6, 6))
-sns.heatmap(matriz, annot=True, fmt="d", cmap="Blues", cbar=False, square=True)
-plt.xlabel("Predicted")
-plt.ylabel("Real Values")
-plt.title("Matriz de Confusão")
+    if (disablePlot == False):
+        # Heatmap para representar a Matriz de Confusão, que quantifica os erros e acertos da previsão
+        matriz = confusion_matrix(y_test, Y_predict)
+        plt.figure(figsize=(6, 6))
+        sns.heatmap(matriz, annot=True, fmt="d", cmap="Blues", cbar=False, square=True)
+        plt.xlabel("Predicted")
+        plt.ylabel("Real Values")
+        plt.title("Matriz de Confusão")
+        plt.show()
+
+    # Observamos uma boa precisão utilizando este modelo para predizer os dados de teste.
+
+    return modeloLDA.predict_proba(X_test)[:,1] # Pega apenas as probabilidades, sem a classe
+
+###############################################################################################
+
+def QDA(X_train, X_test, y_train, y_test, disablePlot:bool = True):
+    """ 
+        Gera um modelo QDA e retorna a lista de probabilidade dos y dos x de teste.
+        Por padrão mostra a respectiva Matriz de Confusão com os dados fornecidos.
+    """
+    # Nos primeiros testes, foi verificado que as variáveis escolhidas são colineares.
+    # Esse informação tinha sido obtida pelas análises do Heatmap gerado no início usando apenas os dados iniciais, indicando uma forte relação entre as variáveis escolhidas (mais 0,6).
+    # Também foi confirmada pelo código, o qual retorna warnings afirmando que as variáveis utilizadas são colineares.
+    # Como este modelo necessita de pelo menos duas variáveis independentes, ele não conseguirá fazer previsões sem a escolha de mais variáveis. Logo, a resposta será sempre a mesma (0). 
+
+    # Definição do modelo
+    modeloQDA = QuadraticDiscriminantAnalysis()
+    modeloQDA.fit(X_train, y_train)  # Utiliza os dados de treinamento parar gerar um modelo preditor
+    Y_predict = modeloQDA.predict(X_test) # Prediz as possíveis classes usando os dados de teste
+
+    # Calcula e mostra a precisão da previsão
+    precisao = accuracy_score(y_test, Y_predict)
+    print(f'Precisão: {precisao:.3f}')
+
+    if (disablePlot == False):
+        # Heatmap para representar a Matriz de Confusão, que quantifica os erros e acertos da previsão
+        matriz = confusion_matrix(y_test, Y_predict)
+        plt.figure(figsize=(6, 6))
+        sns.heatmap(matriz, annot=True, fmt="d", cmap="Blues", cbar=False, square=True)
+        plt.xlabel("Predicted")
+        plt.ylabel("Real Values")
+        plt.title("Matriz de Confusão")
+        plt.show()
+
+    return modeloQDA.predict_proba(X_test)[:,1] # Pega apenas as probabilidades, sem a classe
+
+###############################################################################################
+
+def KNN(X_train, X_test, y_train, y_test, disablePlot:bool = True):
+    """ 
+        Gera um modelo K-NN e retorna a lista de probabilidade dos y dos x de teste.
+        Por padrão mostra a respectiva Matriz de Confusão e o gráfico dos testes com diferentes Ks.
+    """
+    # Para criar o modelo, precisamos saber um bom número para K.
+    # Para definir esse valor, usaremos os valores da precisão de cada valor de k
+    Ks = [k for k in range (1,101, 2)] # Os valores de k poderão ser números impares de 1 a 101.
+    precisao = [] # Irá armazenar a precisão de cada valor de k
+    melhorPrecisao = 0
+    melhorK = 1
+
+    # Determina o melhor K
+    for k in Ks:
+        knn = KNeighborsClassifier(n_neighbors=k)   # Define o modelo K-NN
+        knn.fit(X_train, y_train)                   # Treina o modelo
+        Y_predict = knn.predict(X_test)             # Gera os valores de Y preditos
+        accuracy = accuracy_score(y_test, Y_predict)# Determina a precisão dos valores gerados
+        precisao.append(accuracy)                   # Adiciona a lista
+        if (accuracy> melhorPrecisao):              # Determina o melhor k
+            melhorK = k
+            melhorPrecisao = accuracy
+
+    knn = KNeighborsClassifier(n_neighbors= melhorK)
+    knn.fit(X_train, y_train)                   # Treina o modelo
+   
+    print("Melhor K: ", melhorK)
+    print(f"Precisão: {melhorPrecisao:.3f}")
+    
+    if (disablePlot == False):
+        # Podemos ver a variação da precisão de cada K no gráfico gerado por:
+        sns.lineplot(x = Ks, y = precisao, marker = 'o')
+        plt.xlabel("Valores de K")
+        plt.ylabel("Precisão")
+        plt.show()
+
+        Y_predict = knn.predict(X_test)
+        matriz = confusion_matrix(y_test, Y_predict)
+        # Heatmap para representar a Matriz de Confusão, que quantifica os erros e acertos da previsão
+        plt.figure(figsize=(6, 6))
+        sns.heatmap(matriz, annot=True, fmt="d", cmap="Blues", cbar=False, square=True)
+        plt.xlabel("Predicted")
+        plt.ylabel("Real Values")
+        plt.title("Matriz de Confusão")
+        plt.show()
+
+    return knn.predict_proba(X_test)[:,1] # Pega apenas as probabilidades, sem a classe
+
+###############################################################################################
+
+# Coloque o parâmetro False ao final para ver os gráficos internos
+LDA_Proba = LDA(X_train, X_test, y_train, y_test)
+QDA_Proba = QDA(X_train, X_test, y_train, y_test)
+KNN_Proba = KNN(X_train, X_test, y_train, y_test)
+
+# Curvas ROC e valores AUC
+def ROC(true_y, y_prob, nome):
+    """ Função utilizada para plotar a curva ROC """
+
+    # Se tiver NaN nos valores, substitui por 0, como é tratado pelos preditores
+    if (True in np.isnan(y_prob)):
+        for index, i in enumerate(np.isnan(y_prob)):
+            if i == True:
+                y_prob[index] = 0
+
+    fpr, tpr, thresholds = roc_curve(true_y, y_prob)
+    plt.plot(fpr, tpr)
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    print(nome + " : " + str(roc_auc_score(true_y, y_prob).round(3)))
+
+ROC(y_test, LDA_Proba, "AUC LDA")
+ROC(y_test, QDA_Proba, "AUC QDA")
+ROC(y_test, KNN_Proba, "AUC K-NN")
+plt.legend(["LDA","QDA","KNN"], loc="lower right")
 plt.show()
