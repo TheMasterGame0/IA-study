@@ -18,6 +18,7 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, confusion_matrix, roc_auc_score, roc_curve
 
 # Aqui os dados que serão analisados são importados
@@ -32,16 +33,26 @@ y = conversor.fit_transform(dados.iloc[:,-1])
 Length = []
 letraInicial = []
 pontoFinal = []
+temNumero = []
 for inf in dados["Text"]:
     # Variáveis escolhidas inicialmente
     Length.append(len(inf)) # O comprimento de cada mensagem
     letraInicial.append(inf[0].isupper()) # Um boolean indicando se a primeira letra da frase é maiúscula
-    pontoFinal.append(inf[-1] in ".?!") # Outro boolean indicando se a mensagem tem pontuação no final
-  
+    pontoFinal.append(inf[-1] in ".?!") # Um boolean indicando se a mensagem tem pontuação no final
+    
+    # Variável escolhida após erro de colinearidade no QDA
+    flag = False
+    for i in inf:
+        if i.isdigit():
+            flag = True
+            break
+    temNumero.append(flag) # Um boolean indicando a presença de números na mensagem
+
 # Inserem novas colunas aos dados
 dados.insert(1, "Length", Length, True)
 dados.insert(2, "Maiusculo?", letraInicial, True)
 dados.insert(3, "Ponto Final?", pontoFinal, True)
+dados.insert(4, "Tem Numero?", temNumero, True)
 
 ###############################################################################################
 
@@ -81,11 +92,12 @@ dados.insert(3, "Ponto Final?", pontoFinal, True)
 
 # Agora, após ter feito a preparação das variáveis que serão utilizadas, pode ser feita a divisão dos testes e o bloco de treinamento.
 X_train, X_test, y_train, y_test = train_test_split(dados.iloc[:, 1:-1], y, test_size=0.3)
+X_trainQDA, X_testQDA, y_trainQDA, y_testQDA = train_test_split(dados.iloc[:, [1,4]], y, test_size=0.3)
 # Foi definido que 30% dos dados serão utilizados para testes
 
 ###############################################################################################
 
-def LDA(X_train, X_test, y_train, y_test, disablePlot:bool = True):
+def LDA(X_train, X_test, y_train, y_test, disablePlot:bool = False):
     """ 
         Gera um modelo LDA e retorna a lista de probabilidade dos y dos x de teste.
         Por padrão mostra a respectiva Matriz de Confusão com os dados fornecidos.
@@ -123,7 +135,7 @@ def LDA(X_train, X_test, y_train, y_test, disablePlot:bool = True):
 
 ###############################################################################################
 
-def QDA(X_train, X_test, y_train, y_test, disablePlot:bool = True):
+def QDA(X_train, X_test, y_train, y_test, disablePlot:bool = False):
     """ 
         Gera um modelo QDA e retorna a lista de probabilidade dos y dos x de teste.
         Por padrão mostra a respectiva Matriz de Confusão com os dados fornecidos.
@@ -132,6 +144,7 @@ def QDA(X_train, X_test, y_train, y_test, disablePlot:bool = True):
     # Esse informação tinha sido obtida pelas análises do Heatmap gerado no início usando apenas os dados iniciais, indicando uma forte relação entre as variáveis escolhidas (mais 0,6).
     # Também foi confirmada pelo código, o qual retorna warnings afirmando que as variáveis utilizadas são colineares.
     # Como este modelo necessita de pelo menos duas variáveis independentes, ele não conseguirá fazer previsões sem a escolha de mais variáveis. Logo, a resposta será sempre a mesma (0). 
+    # Para resolver o problema, foi adicionada uma nova variável.
 
     # Definição do modelo
     modeloQDA = QuadraticDiscriminantAnalysis()
@@ -156,14 +169,14 @@ def QDA(X_train, X_test, y_train, y_test, disablePlot:bool = True):
 
 ###############################################################################################
 
-def KNN(X_train, X_test, y_train, y_test, disablePlot:bool = True):
+def KNN(X_train, X_test, y_train, y_test, disablePlot:bool = False):
     """ 
         Gera um modelo K-NN e retorna a lista de probabilidade dos y dos x de teste.
         Por padrão mostra a respectiva Matriz de Confusão e o gráfico dos testes com diferentes Ks.
     """
     # Para criar o modelo, precisamos saber um bom número para K.
     # Para definir esse valor, usaremos os valores da precisão de cada valor de k
-    Ks = [k for k in range (1,101, 2)] # Os valores de k poderão ser números impares de 1 a 101.
+    Ks = [k for k in range (3,101, 2)] # Os valores de k poderão ser números impares de 3 a 101.
     precisao = [] # Irá armazenar a precisão de cada valor de k
     melhorPrecisao = 0
     melhorK = 1
@@ -206,10 +219,67 @@ def KNN(X_train, X_test, y_train, y_test, disablePlot:bool = True):
 
 ###############################################################################################
 
-# Coloque o parâmetro False ao final para ver os gráficos internos
-LDA_Proba = LDA(X_train, X_test, y_train, y_test)
-QDA_Proba = QDA(X_train, X_test, y_train, y_test)
-KNN_Proba = KNN(X_train, X_test, y_train, y_test)
+def RandomForest(X_train, X_test, y_train, y_test, disablePlot:bool = False): 
+    """ 
+        Gera um modelo de Random Forest e retorna a lista de probabilidade dos y dos x de teste.
+        Por padrão mostra a respectiva Matriz de Confusão.
+    """
+    # Cria um modelo com 10 árvores de decisão
+    RFC = RandomForestClassifier(n_estimators=10, n_jobs=-1, verbose = 1)
+    RFC.fit(X_train, y_train)
+
+    # Calcula e mostra a precisão da previsão
+    Y_predict = RFC.predict(X_test)
+    precisao = accuracy_score(y_test, Y_predict)
+    print(f'Precisão: {precisao:.3f}')
+
+    if (disablePlot == False):
+        matriz = confusion_matrix(y_test, Y_predict)
+        # Heatmap para representar a Matriz de Confusão, que quantifica os erros e acertos da previsão
+        plt.figure(figsize=(6, 6))
+        sns.heatmap(matriz, annot=True, fmt="d", cmap="Blues", cbar=False, square=True)
+        plt.xlabel("Predicted")
+        plt.ylabel("Real Values")
+        plt.title("Matriz de Confusão")
+        plt.show()
+
+    return RFC.predict_proba(X_test)[:,1] # Pega apenas as probabilidades, sem a classe
+
+###############################################################################################
+
+def SVM(X_train, X_test, y_train, y_test, disablePlot:bool = False):
+    """
+        Gera um modelo de SVM e retorna a lista de probabilidade dos y dos x de teste.
+        Por padrão mostra a respectiva Matriz de Confusão.
+    """
+    # Cria o modelo
+    svm = SVC(probability=True) # Sem definir o tipo de kernel a ser usado 
+    svm.fit(X_train, y_train)
+
+    # Calcula e mostra a precisão da previsão
+    Y_predict = svm.predict(X_test)
+    precisao = accuracy_score(y_test, Y_predict)
+    print(f'Precisão: {precisao:.3f}')
+
+    if (disablePlot == False):
+        matriz = confusion_matrix(y_test, Y_predict)
+        # Heatmap para representar a Matriz de Confusão, que quantifica os erros e acertos da previsão
+        plt.figure(figsize=(6, 6))
+        sns.heatmap(matriz, annot=True, fmt="d", cmap="Blues", cbar=False, square=True)
+        plt.xlabel("Predicted")
+        plt.ylabel("Real Values")
+        plt.title("Matriz de Confusão")
+        plt.show()
+
+    return svm.predict_proba(X_test)[:,1] # Pega apenas as probabilidades, sem a classe
+
+###############################################################################################
+# Remova o parâmetro True ao final para ver os gráficos internos
+LDA_Proba = LDA(X_train, X_test, y_train, y_test, True)
+QDA_Proba = QDA(X_trainQDA, X_testQDA, y_trainQDA, y_testQDA, True)
+KNN_Proba = KNN(X_train, X_test, y_train, y_test, True)
+RFC_Proba = RandomForest(X_train, X_test, y_train, y_test, True)
+SVM_Proba = SVM(X_train, X_test, y_train, y_test, True)
 
 # Curvas ROC e valores AUC
 def ROC(true_y, y_prob, nome):
@@ -228,7 +298,21 @@ def ROC(true_y, y_prob, nome):
     print(nome + " : " + str(roc_auc_score(true_y, y_prob).round(3)))
 
 ROC(y_test, LDA_Proba, "AUC LDA")
-ROC(y_test, QDA_Proba, "AUC QDA")
+ROC(y_testQDA, QDA_Proba, "AUC QDA")
 ROC(y_test, KNN_Proba, "AUC K-NN")
-plt.legend(["LDA","QDA","KNN"], loc="lower right")
+ROC(y_test, RFC_Proba, "AUC Random Forest")
+ROC(y_test, SVM_Proba, "AUC SVM")
+plt.legend(["LDA","QDA","KNN", "Random Forest", "SVM"], loc="lower right")
 plt.show()
+
+# Foi difícil determinar os métodos que apresentam os melhores resultados, 
+# levando em consideração as variáveis escolhidas e os resultados observados, 
+# além de que os valores de AUC da maioria são muito próximos.
+#
+# Ao executar diversas vezes, observou-se uma tendência entre os modelos para apresentar um melhor resultado. 
+# A conclusão obtida foi:
+# LDA               AUC normalmente próximo de 1
+# Random Forest     AUC normalmente próximo de 0,997
+# K-NN              AUC normalmente próximo de 0,995
+# SVM               AUC normalmente próximo de 0,910
+# QDA               AUC normalmente próximo de 0,870
